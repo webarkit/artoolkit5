@@ -291,8 +291,9 @@ int kpmSetRefDataSet( KpmHandle *kpmHandle, KpmRefDataSet *refDataSet )
                             descriptors.push_back(kpmHandle->refDataSet.refPoint[i].featureVec.v[j]);
                     }
                 }
-                ARLOGi("points-%d\n", points.size());
-               kpmHandle->pageIDs[db_id] = kpmHandle->refDataSet.pageInfo[k].pageNo; kpmHandle->freakMatcher->addFreakFeaturesAndDescriptors(points,descriptors,points_3d,kpmHandle->refDataSet.pageInfo[k].imageInfo[m].width,kpmHandle->refDataSet.pageInfo[k].imageInfo[m].height,db_id++);
+                ARLOGi("page %d, image num %d, points - %d\n", k, m, points.size());
+               kpmHandle->pageIDs[db_id] = kpmHandle->refDataSet.pageInfo[k].pageNo;
+               kpmHandle->freakMatcher->addFreakFeaturesAndDescriptors(points,descriptors,points_3d,kpmHandle->refDataSet.pageInfo[k].imageInfo[m].width,kpmHandle->refDataSet.pageInfo[k].imageInfo[m].height,db_id++);
             }
         }
     }
@@ -631,6 +632,34 @@ int kpmMatching(KpmHandle *kpmHandle, ARUint8 *inImageLuma)
         }
         free(annMatch2);
 #else
+
+        for (int pageLoop = 0; pageLoop < kpmHandle->resultNum; pageLoop++) {
+            kpmHandle->result[pageLoop].camPoseF = -1;
+        }
+
+        const vision::matches_t& matches = kpmHandle->freakMatcher->inliers();
+        int matched_image_id = kpmHandle->freakMatcher->matchedId();
+        if (matched_image_id != 0) { 
+            int matchedPageNo = kpmHandle->pageIDs[matched_image_id];
+
+            if( !kpmHandle->result[matchedPageNo].skipF ) { 
+                ret = kpmUtilGetPose_binary(kpmHandle->cparamLT,
+                                            matches ,
+                                            kpmHandle->freakMatcher->get3DFeaturePoints(matched_image_id),
+                                            kpmHandle->freakMatcher->getQueryFeaturePoints(),
+                                            kpmHandle->result[matchedPageNo].camPose,
+                                            &(kpmHandle->result[matchedPageNo].error) );
+
+                if (ret == 0) {
+                    kpmHandle->result[matchedPageNo].camPoseF = 0;
+                    kpmHandle->result[matchedPageNo].inlierNum = (int)matches.size();
+                    kpmHandle->result[matchedPageNo].pageNo = matchedPageNo;
+                    ARLOGi("Page[%d]  pre:%3d, aft:%3d, error = %f\n", matchedPageNo, (int)matches.size(), (int)matches.size(), kpmHandle->result[matchedPageNo].error);
+                }
+            }
+        }
+
+        /*
         for (int pageLoop = 0; pageLoop < kpmHandle->resultNum; pageLoop++) {
             
             kpmHandle->result[pageLoop].pageNo = kpmHandle->refDataSet.pageInfo[pageLoop].pageNo;
@@ -642,12 +671,6 @@ int kpmMatching(KpmHandle *kpmHandle, ARUint8 *inImageLuma)
             int matched_image_id = kpmHandle->freakMatcher->matchedId();
             if (matched_image_id < 0) continue;
 
-            ret = kpmUtilGetPose_binary(kpmHandle->cparamLT,
-                                        matches ,
-                                        kpmHandle->freakMatcher->get3DFeaturePoints(matched_image_id),
-                                        kpmHandle->freakMatcher->getQueryFeaturePoints(),
-                                        kpmHandle->result[pageLoop].camPose,
-                                        &(kpmHandle->result[pageLoop].error) );
             //ARLOGi("Pose (freak) - %s",arrayToString2(kpmHandle->result[pageLoop].camPose).c_str());
             if( ret == 0 ) {
                 kpmHandle->result[pageLoop].camPoseF = 0;
@@ -656,6 +679,7 @@ int kpmMatching(KpmHandle *kpmHandle, ARUint8 *inImageLuma)
                 ARLOGi("Page[%d]  pre:%3d, aft:%3d, error = %f\n", pageLoop, (int)matches.size(), (int)matches.size(), kpmHandle->result[pageLoop].error);
             }
         }
+        */
 #endif
 #if !BINARY_FEATURE
         free(featureVector.sf);
